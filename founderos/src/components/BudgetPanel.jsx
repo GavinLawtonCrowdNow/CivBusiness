@@ -3,16 +3,40 @@ function fmt(n) {
   return `$${n}`;
 }
 
-function BudgetSlider({ label, icon, value, max, onChange, color }) {
-  const pct = Math.round((value / max) * 100);
+const SLIDERS = [
+  {
+    dept: 'sales',
+    label: 'Sales budget',
+    icon: '💼',
+    color: '#34d399',
+    hint: 'amplifies sales rep ARR',
+  },
+  {
+    dept: 'product',
+    label: 'Product budget',
+    icon: '🛠️',
+    color: '#818cf8',
+    hint: '+0.5 queue cap per $20K',
+  },
+  {
+    dept: 'ops',
+    label: 'Ops budget',
+    icon: '⚙️',
+    color: '#fb923c',
+    hint: 'general overhead',
+  },
+];
 
+function Slider({ cfg, value, max, onChange }) {
   return (
-    <div className="mb-5">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-semibold text-slate-300">
-          {icon} {label}
+    <div className="mb-3">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[11px] text-slate-400">
+          {cfg.icon} {cfg.label}
         </span>
-        <span className={`text-sm font-mono font-bold ${color}`}>{fmt(value)}</span>
+        <span className="text-[11px] font-mono font-bold" style={{ color: cfg.color }}>
+          {fmt(value)}
+        </span>
       </div>
       <input
         type="range"
@@ -22,75 +46,71 @@ function BudgetSlider({ label, icon, value, max, onChange, color }) {
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full"
-        style={{ accentColor: color }}
+        style={{ accentColor: cfg.color }}
       />
-      <div className="flex justify-between text-xs text-slate-600 mt-1">
-        <span>$0</span>
-        <span className="text-slate-500">{pct}% of cap</span>
-        <span>{fmt(max)}</span>
-      </div>
+      <div className="text-[9px] text-slate-600 mt-0.5">{cfg.hint}</div>
     </div>
   );
 }
 
 export default function BudgetPanel({ state, dispatch }) {
-  const maxBudget = Math.floor(state.cash * 0.25);
+  const maxBudget = Math.max(20_000, Math.floor(state.cash * 0.25));
 
-  const total = state.budgetSales + state.budgetProduct + state.budgetOps;
-  const headcountCost = state.talent * 15_000;
-  const repsCost = state.salesReps * 15_000;
-  const projectedBurn = state.burnRate + headcountCost + repsCost + total;
-  const quarterlyRevenue = state.arr / 4;
-  const netFlow = quarterlyRevenue - projectedBurn;
+  const opsCount = state.workforce.filter((e) => e.role === 'ops').length;
+  const opsDiscount = opsCount * 5_000;
+  const headcountCost = state.workforce.length * 15_000;
+  const budgetTotal = state.budgetSales + state.budgetProduct + state.budgetOps;
+  const totalBurn = state.burnRate + headcountCost + budgetTotal - opsDiscount;
+  const quarterlyRevenue = Math.round(state.arr / 4);
+  const netFlow = quarterlyRevenue - totalBurn;
 
   return (
-    <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 h-full flex flex-col">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
-        📋 Budget Allocation
+    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex flex-col">
+      <h2 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">
+        💰 Budget
       </h2>
 
-      <BudgetSlider
-        label="Sales" icon="💼"
-        value={state.budgetSales}
-        max={maxBudget}
-        onChange={(v) => dispatch({ type: 'SET_BUDGET', dept: 'sales', value: v })}
-        color="#818cf8"
-      />
-      <BudgetSlider
-        label="Product" icon="🛠️"
-        value={state.budgetProduct}
-        max={maxBudget}
-        onChange={(v) => dispatch({ type: 'SET_BUDGET', dept: 'product', value: v })}
-        color="#34d399"
-      />
-      <BudgetSlider
-        label="Ops" icon="⚙️"
-        value={state.budgetOps}
-        max={maxBudget}
-        onChange={(v) => dispatch({ type: 'SET_BUDGET', dept: 'ops', value: v })}
-        color="#fb923c"
-      />
+      {SLIDERS.map((cfg) => (
+        <Slider
+          key={cfg.dept}
+          cfg={cfg}
+          value={state[`budget${cfg.dept.charAt(0).toUpperCase() + cfg.dept.slice(1)}`]}
+          max={maxBudget}
+          onChange={(v) => dispatch({ type: 'SET_BUDGET', dept: cfg.dept, value: v })}
+        />
+      ))}
 
-      <div className="mt-auto border-t border-slate-700 pt-3 space-y-1 text-xs font-mono">
-        <div className="flex justify-between text-slate-400">
+      <div className="border-t border-slate-700/60 pt-2 space-y-0.5 text-[10px] font-mono mt-1">
+        <div className="flex justify-between text-slate-500">
+          <span>Headcount ({state.workforce.length})</span>
+          <span className="text-red-400">-{fmt(headcountCost)}</span>
+        </div>
+        <div className="flex justify-between text-slate-500">
           <span>Budget spend</span>
-          <span className="text-red-400">-{fmt(total)}</span>
+          <span className="text-red-400">-{fmt(budgetTotal)}</span>
         </div>
-        <div className="flex justify-between text-slate-400">
-          <span>Headcount cost</span>
-          <span className="text-red-400">-{fmt(headcountCost + repsCost)}</span>
-        </div>
-        <div className="flex justify-between text-slate-400">
-          <span>Base burn</span>
+        <div className="flex justify-between text-slate-500">
+          <span>Base ops burn</span>
           <span className="text-red-400">-{fmt(state.burnRate)}</span>
         </div>
-        <div className="flex justify-between text-slate-400">
+        {opsDiscount > 0 && (
+          <div className="flex justify-between text-slate-500">
+            <span>Ops discount</span>
+            <span className="text-green-400">+{fmt(opsDiscount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between text-slate-500">
           <span>Revenue</span>
-          <span className="text-green-400">+{fmt(Math.round(quarterlyRevenue))}</span>
+          <span className="text-green-400">+{fmt(quarterlyRevenue)}</span>
         </div>
-        <div className={`flex justify-between font-bold border-t border-slate-600 pt-1 ${netFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-          <span>Net this quarter</span>
-          <span>{netFlow >= 0 ? '+' : ''}{fmt(Math.round(netFlow))}</span>
+        <div
+          className={`flex justify-between font-bold border-t border-slate-600 pt-1 ${netFlow >= 0 ? 'text-green-400' : 'text-red-400'}`}
+        >
+          <span>Net / qtr</span>
+          <span>
+            {netFlow >= 0 ? '+' : ''}
+            {fmt(Math.round(netFlow))}
+          </span>
         </div>
       </div>
     </div>
